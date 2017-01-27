@@ -1,9 +1,13 @@
+
 import traceback
 
+from archinfo.arch_soot import SootAddressDescriptor
 import pyvex
 import archinfo
 
 from ...engines.successors import SimSuccessors
+
+from .cfg_utils import CFGUtils
 
 
 class CFGNodeCreationFailure(object):
@@ -47,6 +51,7 @@ class CFGNode(object):
                  final_states=None,
                  block_id=None,
                  irsb=None,
+                 soot_block=None,
                  instruction_addrs=None,
                  depth=None,
                  callstack_key=None,
@@ -82,15 +87,19 @@ class CFGNode(object):
         self._callstack_key = self.callstack.stack_suffix(self._cfg.context_sensitivity_level) \
             if self.callstack is not None else callstack_key
 
-        self.name = simprocedure_name
-        if self.name is None:
-            sym = cfg.project.loader.find_symbol(addr)
-            if sym is not None:
-                self.name = sym.name
-        if self.name is None and isinstance(cfg.project.arch, archinfo.ArchARM) and addr & 1:
-            sym = cfg.project.loader.find_symbol(addr - 1)
-            if sym is not None:
-                self.name = sym.name
+        if isinstance(addr, SootAddressDescriptor):
+            self.name = repr(addr)
+        else:
+            self.name = simprocedure_name
+            if self.name is None:
+                sym = cfg.project.loader.find_symbol(addr)
+                if sym is not None:
+                    self.name = sym.name
+            if self.name is None and isinstance(cfg.project.arch, archinfo.ArchARM) and addr & 1:
+                sym = cfg.project.loader.find_symbol(addr - 1)
+                if sym is not None:
+                    self.name = sym.name
+
         if function_address and self.name is None:
             sym = cfg.project.loader.find_symbol(function_address)
             if sym is not None:
@@ -113,6 +122,7 @@ class CFGNode(object):
 
         self.final_states = [ ] if final_states is None else final_states
         self.irsb = irsb
+        self.soot_block = soot_block
 
         self.has_return = False
 
@@ -175,7 +185,7 @@ class CFGNode(object):
         s = "<CFGNode "
         if self.name is not None:
             s += self.name + " "
-        s += hex(self.addr)
+        s += CFGUtils.loc_to_str(self.addr)
         if self.size is not None:
             s += "[%d]" % self.size
         if self.looping_times > 0:

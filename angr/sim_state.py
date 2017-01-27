@@ -4,11 +4,11 @@ import contextlib
 import weakref
 
 import logging
-l = logging.getLogger("angr.sim_state")
 
 import claripy
 import ana
 from archinfo import arch_from_id
+from archinfo.arch_soot import ArchSoot, SootAddressDescriptor
 from .misc.ux import deprecated
 
 def arch_overrideable(f):
@@ -22,6 +22,8 @@ def arch_overrideable(f):
     return wrapped_f
 
 from .state_plugins import default_plugins
+
+l = logging.getLogger("angr.sim_state")
 
 # This is a counter for the state-merging symbolic variables
 merge_counter = itertools.count()
@@ -78,23 +80,34 @@ class SimState(ana.Storable): # pylint: disable=R0904
             # we don't set the memory endness because, unlike registers, it's hard to understand
             # which endness the data should be read
 
-            if o.ABSTRACT_MEMORY in self.options:
-                # We use SimAbstractMemory in static mode
-                # Convert memory_backer into 'global' region
-                if memory_backer is not None:
-                    memory_backer = {'global': memory_backer}
+            if isinstance(self.arch, ArchSoot):
+                self.register_plugin('memory', SimJavaVmMemory(memory_id="mem")
+                                     )
+            else:
+                if o.ABSTRACT_MEMORY in self.options:
+                    # We use SimAbstractMemory in static mode
+                    # Convert memory_backer into 'global' region
+                    if memory_backer is not None:
+                        memory_backer = {'global': memory_backer}
 
-                # TODO: support permissions backer in SimAbstractMemory
-                self.register_plugin('memory', SimAbstractMemory(memory_backer=memory_backer, memory_id="mem"))
-            elif o.FAST_MEMORY in self.options:
-                self.register_plugin('memory', SimFastMemory(memory_backer=memory_backer, memory_id="mem"))
-            else:
-                self.register_plugin('memory', SimSymbolicMemory(memory_backer=memory_backer, permissions_backer=permissions_backer, memory_id="mem"))
+                    # TODO: support permissions backer in SimAbstractMemory
+                    self.register_plugin('memory', SimAbstractMemory(memory_backer=memory_backer, memory_id="mem"))
+                elif o.FAST_MEMORY in self.options:
+                    self.register_plugin('memory', SimFastMemory(memory_backer=memory_backer, memory_id="mem"))
+                else:
+                    self.register_plugin('memory', SimSymbolicMemory(memory_backer=memory_backer,
+                                                                     permissions_backer=permissions_backer,
+                                                                     memory_id="mem")
+                                         )
+
         if not self.has_plugin('registers'):
-            if o.FAST_REGISTERS in self.options:
-                self.register_plugin('registers', SimFastMemory(memory_id="reg", endness=self.arch.register_endness))
+            if isinstance(self.arch, ArchSoot):
+                self.register_plugin('registers', SimKeyValueMemory(memory_id="reg"))
             else:
-                self.register_plugin('registers', SimSymbolicMemory(memory_id="reg", endness=self.arch.register_endness))
+                if o.FAST_REGISTERS in self.options:
+                    self.register_plugin('registers', SimFastMemory(memory_id="reg", endness=self.arch.register_endness))
+                else:
+                    self.register_plugin('registers', SimSymbolicMemory(memory_id="reg", endness=self.arch.register_endness))
 
         # OS name
         self.os_name = os_name
@@ -133,7 +146,11 @@ class SimState(ana.Storable): # pylint: disable=R0904
 
     def __repr__(self):
         try:
-            ip_str = "%#x" % self.addr
+            addr = self.addr
+            if type(addr) in (int, long):
+                ip_str = "%#x" % addr
+            else:
+                ip_str = repr(addr)
         except (SimValueError, SimSolverModeError):
             ip_str = repr(self.regs.ip)
 
@@ -186,6 +203,9 @@ class SimState(ana.Storable): # pylint: disable=R0904
         :return: an int
         """
 
+        ip = self.regs._ip
+        if isinstance(ip, SootAddressDescriptor):
+            return ip
         return self.se.eval_one(self.regs._ip)
 
     #
@@ -874,6 +894,8 @@ class SimState(ana.Storable): # pylint: disable=R0904
 from .state_plugins.symbolic_memory import SimSymbolicMemory
 from .state_plugins.fast_memory import SimFastMemory
 from .state_plugins.abstract_memory import SimAbstractMemory
+from .state_plugins.keyvalue_memory import SimKeyValueMemory
+from .state_plugins.javavm_memory import SimJavaVmMemory
 from .state_plugins.history import SimStateHistory
 from .errors import SimMergeError, SimValueError, SimStateError, SimSolverModeError
 from .state_plugins.inspect import BP_AFTER, BP_BEFORE

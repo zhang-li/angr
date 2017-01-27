@@ -3,6 +3,7 @@
 from .cfg_fast import CFGFast
 from .cfg_accurate import CFGAccurate
 from .cfg import CFG
+from .cfg_fast_soot import CFGFastSoot
 
 # things to make your life easier
 from .cfg_arch_options import CFGArchOptions

@@ -10,7 +10,8 @@ class SimEngineSyscall(SimEngine): #pylint:disable=abstract-method,arguments-dif
         self.project = project
 
     def _check(self, state, **kwargs):
-        return state.history.jumpkind.startswith('Ijk_Sys')
+        jumpkind = state.history.jumpkind
+        return jumpkind is not None and jumpkind.startswith('Ijk_Sys')
 
     def process(self, state, **kwargs):
         l.debug("Invoking system call handler")

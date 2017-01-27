@@ -8,6 +8,7 @@ import string
 from collections import defaultdict
 
 import archinfo
+from archinfo.arch_soot import SootAddressDescriptor, SootMethodDescriptor
 import cle
 from cle.address_translator import AT
 
@@ -19,7 +20,13 @@ l = logging.getLogger("angr.project")
 # All the builtins right now use SimEngineVEX.  This may not hold for long.
 
 
-def global_default(): return {'any': SimEngineVEX}
+def global_default():
+    return {
+        'any': SimEngineVEX,
+        'Soot': SimEngineSoot,
+    }
+
+
 default_engines = defaultdict(global_default)
 
 
@@ -41,19 +48,20 @@ def register_default_engine(loader_backend, engine, arch='any'):
     default_engines[loader_backend][arch] = engine
 
 
-def get_default_engine(loader_backend, arch='any'):
+def get_default_engine(loader_backend, arch_name='any'):
     """
     Get some sort of sane default for a given loader and/or arch.
     Can be set with register_default_engine()
     :param loader_backend:
-    :param arch:
+    :param arch_name:
     :return:
     """
     matches = default_engines[loader_backend]
-    for k,v in matches.items():
-        if k == arch or k == 'any':
+    for k, v in matches.items():
+        if k == arch_name:
             return v
-    return None
+    # Try "any"
+    return matches.get("any", None)
 
 projects = weakref.WeakValueDictionary()
 
@@ -186,7 +194,7 @@ class Project(object):
         self._default_analysis_mode = default_analysis_mode
         self._exclude_sim_procedures_func = exclude_sim_procedures_func
         self._exclude_sim_procedures_list = exclude_sim_procedures_list
-        self._should_use_sim_procedures = use_sim_procedures
+        self._use_sim_procedures = use_sim_procedures
         self._support_selfmodifying_code = support_selfmodifying_code
         self._ignore_functions = ignore_functions
         self._executing = False # this is a flag for the convenience API, exec() and terminate_execution() below
@@ -197,25 +205,28 @@ class Project(object):
                 l.warning("Disabling IRSB translation cache because support for self-modifying code is enabled.")
 
         # Look up the default engine.
-        engine_cls = get_default_engine(type(self.loader.main_object))
+        engine_cls = get_default_engine(type(self.loader.main_object), arch_name=self.loader.main_object.arch.name)
         if not engine_cls:
             raise AngrError("No engine associated with loader %s" % str(type(self.loader.main_object)))
         engine = engine_cls(
                 stop_points=self._sim_procedures,
                 use_cache=translation_cache,
-                support_selfmodifying_code=support_selfmodifying_code)
+                support_selfmodifying_code=support_selfmodifying_code,
+                project=self,
+        )
         procedure_engine = SimEngineProcedure()
         hook_engine = SimEngineHook(self)
         failure_engine = SimEngineFailure(self)
         syscall_engine = SimEngineSyscall(self)
         unicorn_engine = SimEngineUnicorn(self._sim_procedures)
+        all_engines = [ failure_engine, syscall_engine, hook_engine, unicorn_engine, engine ]
 
         self.entry = self.loader.main_object.entry
         self.factory = AngrObjectFactory(
                 self,
                 engine,
                 procedure_engine,
-                [failure_engine, syscall_engine, hook_engine, unicorn_engine, engine])
+                all_engines)
         self.analyses = Analyses(self)
         self.surveyors = Surveyors(self)
         self.kb = KnowledgeBase(self, self.loader.main_object)
@@ -340,10 +351,10 @@ class Project(object):
         Has symbol name `f` been marked for exclusion by any of the user
         parameters?
         """
-        return not self._should_use_sim_procedures or \
-            f in self._exclude_sim_procedures_list or \
-            f in self._ignore_functions or \
-            (self._exclude_sim_procedures_func is not None and self._exclude_sim_procedures_func(f))
+        return not self._use_sim_procedures or \
+               f in self._exclude_sim_procedures_list or \
+               f in self._ignore_functions or \
+               (self._exclude_sim_procedures_func is not None and self._exclude_sim_procedures_func(f))
 
     #
     # Public methods
@@ -387,13 +398,14 @@ class Project(object):
         l.debug('hooking %#x with %s', addr, hook)
 
         if self.is_hooked(addr):
+            addr_str = "%s" % repr(addr) if isinstance(addr, SootAddressDescriptor) else "%#x" % addr
             if replace is True:
                 pass
             elif replace is False:
-                l.warning("Address is already hooked, during hook(%#x, %s). Not re-hooking.", addr, hook)
+                l.warning("Address is already hooked, during hook(%s, %s). Not re-hooking.", addr_str, hook)
                 return
             else:
-                l.warning("Address is already hooked, during hook(%#x, %s). Re-hooking.", addr, hook)
+                l.warning("Address is already hooked, during hook(%s, %s). Re-hooking.", addr_str, hook)
 
         if isinstance(hook, type):
             if once("hook_instance_warning"):
@@ -646,6 +658,14 @@ class Project(object):
         return '<Project %s>' % (self.filename if self.filename is not None else 'loaded from stream')
 
     #
+    # Properties
+    #
+
+    @property
+    def use_sim_procedures(self):
+        return self._use_sim_procedures
+
+    #
     # Compatibility
     #
 
@@ -661,5 +681,7 @@ from angr.simos import SimOS, os_mapping
 from .analyses.analysis import Analyses
 from .surveyors import Surveyors
 from .knowledge_base import KnowledgeBase
-from .engines import SimEngineFailure, SimEngineSyscall, SimEngineProcedure, SimEngineVEX, SimEngineUnicorn, SimEngineHook
+from .engines import SimEngineFailure, SimEngineSyscall, SimEngineProcedure, SimEngineVEX, SimEngineUnicorn,\
+    SimEngineHook, SimEngineSoot
+from .misc.ux import once
 from .procedures import SIM_PROCEDURES, SIM_LIBRARIES

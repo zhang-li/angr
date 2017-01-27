@@ -5,7 +5,7 @@ def register_analysis(cls, name):
 
 from .analysis import Analysis
 
-from .cfg import CFGFast, CFGAccurate, CFG, CFGArchOptions
+from .cfg import CFGFast, CFGAccurate, CFG, CFGArchOptions, CFGFastSoot
 from .cdg import CDG
 from .ddg import DDG
 from .vfg import VFG
