@@ -33,7 +33,8 @@ class SimEngineVEX(SimEngine):
             cache_size=10000,
             default_opt_level=1,
             support_selfmodifying_code=False,
-            single_step=False):
+            single_step=False,
+            **kwargs):
 
         super(SimEngineVEX, self).__init__()
 
