@@ -25,3 +25,5 @@ from .disassembly import Disassembly
 from .variable_recovery import VariableRecovery
 from .identifier import Identifier
 from .callee_cleanup_finder import CalleeCleanupFinder
+from .loop_analysis import LoopAnalysis
+from .defuse_analysis import DefUseAnalysis

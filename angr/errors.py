@@ -107,6 +107,13 @@ class AngrDDGError(AngrAnalysisError):
     pass
 
 #
+# Loop analysis
+#
+
+class AngrLoopAnalysisError(AngrAnalysisError):
+    pass
+
+#
 # Exploration techniques
 #
 
