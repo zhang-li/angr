@@ -1278,21 +1278,9 @@ class CFGFast(ForwardAnalysis, CFGBase):    # pylint: disable=abstract-method
     def _job_queue_empty(self):
 
         if self._pending_jobs:
-            # look for a job that comes from a function that must return
-            # if we can find one, just use it
-            job_index = None
-            for i, job in enumerate(self._pending_jobs):
-                src_func_addr = job.returning_source
-                if src_func_addr is None or src_func_addr not in self.kb.functions:
-                    continue
-                function = self.kb.functions[src_func_addr]
-                if function.returning is True:
-                    job_index = i
-                    break
-
-            if job_index is not None:
-                self._insert_job(self._pending_jobs[job_index])
-                del self._pending_jobs[job_index]
+            pending_job = self._pop_pending_job()
+            if pending_job is not None:
+                self._insert_job(pending_job)
                 return
 
         # did we finish analyzing any function?
@@ -2015,6 +2003,31 @@ class CFGFast(ForwardAnalysis, CFGBase):    # pylint: disable=abstract-method
                         self._function_returns[new_function_addr].append(fr)
 
         return jobs
+
+    def _pop_pending_job(self):
+        """
+        Scan through the pending job list and pop the first pending job which must return from the source function
+        (callee function).
+
+        :return:  The popped pending job, or None if we are not sure which job to take.
+        """
+
+        job_index = None
+        for i, job in enumerate(self._pending_jobs):
+            src_func_addr = job.returning_source
+            if src_func_addr is None or src_func_addr not in self.kb.functions:
+                continue
+            function = self.kb.functions[src_func_addr]
+            if function.returning is True:
+                job_index = i
+                break
+
+        if job_index is not None:
+            the_job = self._pending_jobs[job_index]
+            del self._pending_jobs[job_index]
+            return the_job
+
+        return None
 
     # Data reference processing
 
