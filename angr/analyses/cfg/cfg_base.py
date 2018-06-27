@@ -88,7 +88,7 @@ class CFGBase(Analysis):
 
         # Store all the functions analyzed before the set is cleared
         # Used for performance optimization
-        self._changed_functions = None
+        self._updated_nonreturning_functions = None
 
         self._normalize = normalize
         # Flag, whether the CFG has been normalized or not
@@ -615,8 +615,7 @@ class CFGBase(Analysis):
         :rtype:                  bool
         """
 
-
-        obj = self.project.loader.find_object_containing(region_start)
+        obj = self.project.loader.find_object_containing(region_start, membership_check=False)
         if obj is None:
             return False
         if isinstance(obj, PE):
@@ -723,11 +722,11 @@ class CFGBase(Analysis):
         :rtype:             bool
         """
 
-        obj = self.project.loader.find_object_containing(addr_a)
+        obj = self.project.loader.find_object_containing(addr_a, membership_check=False)
 
         if obj is None:
             # test if addr_b also does not belong to any object
-            obj_b = self.project.loader.find_object_containing(addr_b)
+            obj_b = self.project.loader.find_object_containing(addr_b, membership_check=False)
             if obj_b is None:
                 return True
             return False
@@ -868,20 +867,21 @@ class CFGBase(Analysis):
             'functions_do_not_return': []
         }
 
-        if self._changed_functions is not None:
-            all_functions = self._changed_functions
-            caller_functions = set()
+        if self._updated_nonreturning_functions is not None:
+            all_func_addrs = self._updated_nonreturning_functions
+            caller_func_addrs = set()
 
-            for func_addr in self._changed_functions:
+            for func_addr in self._updated_nonreturning_functions:
                 if func_addr not in self.kb.functions.callgraph:
                     continue
                 callers = self.kb.functions.callgraph.predecessors(func_addr)
                 for f in callers:
-                    caller_functions.add(f)
+                    caller_func_addrs.add(f)
 
-            all_functions |= caller_functions
-
-            all_functions = [ self.kb.functions.function(addr=f) for f in all_functions if f in self.kb.functions ]
+            # Add callers
+            all_func_addrs |= caller_func_addrs
+            # Convert addresses to objects
+            all_functions = [ self.kb.functions.get_by_addr(f) for f in all_func_addrs ]
 
         else:
             all_functions = self.kb.functions.values()
